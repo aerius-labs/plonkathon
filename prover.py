@@ -191,7 +191,7 @@ class Prover:
 
         # List of roots of unity at 4x fineness, i.e. the powers of µ
         # where µ^(4n) = 1
-        roots4x = Scalar.roots_of_unity(group_order * 4)
+        roots4x = Polynomial(Scalar.roots_of_unity(group_order * 4), Basis.LAGRANGE)
 
         # Using self.fft_expand, move A, B, C into coset extended Lagrange basis
         expanded_A = self.fft_expand(self.A)
@@ -223,11 +223,12 @@ class Prover:
         expanded_S3 = self.fft_expand(self.pk.S3)
 
         # Compute Z_H = X^N - 1, also in evaluation form in the coset
-
+        Z_H = Polynomial([(Scalar(root) * self.fft_cofactor) ** group_order - 1
+                          for root in roots4x.values], Basis.LAGRANGE)
 
         # Compute L0, the Lagrange basis polynomial that evaluates to 1 at x = 1 = ω^0
         # and 0 at other roots of unity
-
+        L0 = Polynomial([Scalar(1)] + [Scalar(0)] * (group_order - 1), Basis.LAGRANGE)
         # Expand L0 into the coset extended Lagrange basis
         L0_big = self.fft_expand(
             Polynomial([Scalar(1)] + [Scalar(0)] * (group_order - 1), Basis.LAGRANGE)
@@ -249,6 +250,33 @@ class Prover:
         #    (Z - 1) * L0 = 0
         #    L0 = Lagrange polynomial, equal at all roots of unity except 1
 
+        gate_check = (
+            expanded_QL * expanded_A +
+            expanded_QR * expanded_B +
+            expanded_QM * expanded_A * expanded_B +
+            expanded_QO * expanded_C +
+            expanded_PI +
+            expanded_QC
+        )
+
+        p_accum = ((
+            self.rlc(expanded_A, roots4x * self.fft_cofactor) *
+            self.rlc(expanded_B, roots4x * (self.fft_cofactor * 2)) *
+            self.rlc(expanded_C, roots4x * (self.fft_cofactor * 3))
+            ) * expanded_Z
+            - (
+                self.rlc(expanded_A, expanded_S1) *
+                self.rlc(expanded_B, expanded_S2) *
+                self.rlc(expanded_C, expanded_S3)
+                ) * Z_shift
+            )
+        
+        L0_check = (expanded_Z - Scalar(1)) * L0_big
+
+        QUOT_big = (gate_check + 
+                    p_accum * self.alpha + 
+                    L0_check * self.alpha**2) / Z_H
+        
         # Sanity check: QUOT has degree < 3n
         assert (
             self.expanded_evals_to_coeffs(QUOT_big).values[-group_order:]
@@ -258,7 +286,12 @@ class Prover:
 
         # Split up T into T1, T2 and T3 (needed because T has degree 3n - 4, so is
         # too big for the trusted setup)
+        coeff = self.expanded_evals_to_coeffs(QUOT_big).values
+        T1 = Polynomial(coeff[:group_order], Basis.MONOMIAL).fft()
+        T2 = Polynomial(coeff[group_order: 2*group_order], Basis.MONOMIAL).fft()
+        T3 = Polynomial(coeff[2*group_order: 3*group_order], Basis.MONOMIAL).fft()
 
+        fft_cofactor = self.fft_cofactor
         # Sanity check that we've computed T1, T2, T3 correctly
         assert (
             T1.barycentric_eval(fft_cofactor)
@@ -269,6 +302,7 @@ class Prover:
         print("Generated T1, T2, T3 polynomials")
 
         # Compute commitments t_lo_1, t_mid_1, t_hi_1 to T1, T2, T3 polynomials
+        t_lo_1, t_mid_1, t_hi_1 = setup.commit(T1), setup.commit(T2), setup.commit(T3)
 
         # Return t_lo_1, t_mid_1, t_hi_1
         return Message3(t_lo_1, t_mid_1, t_hi_1)
@@ -295,6 +329,7 @@ class Prover:
     def round_5(self) -> Message5:
         # Evaluate the Lagrange basis polynomial L0 at zeta
         # Evaluate the vanishing polynomial Z_H(X) = X^n - 1 at zeta
+
 
         # Move T1, T2, T3 into the coset extended Lagrange basis
         # Move pk.QL, pk.QR, pk.QM, pk.QO, pk.QC into the coset extended Lagrange basis
