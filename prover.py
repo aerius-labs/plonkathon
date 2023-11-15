@@ -149,8 +149,10 @@ class Prover:
             Z_values.append(
                 Z_values[-1] *
                 self.rlc(self.A.values[i], roots_of_unity[i]) *
-                self.rlc(self.B.values[i], 2 * roots_of_unity[i]) *
-                self.rlc(self.C.values[i], 3 * roots_of_unity[i]) /
+                self.rlc(self.B.values[i], 2 * roots_of_unity
+                [i]) *
+                self.rlc(self.C.values[i], 3 * roots_of_unity
+                [i]) /
                 self.rlc(self.A.values[i], self.pk.S1.values[i]) /
                 self.rlc(self.B.values[i], self.pk.S2.values[i]) /
                 self.rlc(self.C.values[i], self.pk.S3.values[i])
@@ -174,8 +176,9 @@ class Prover:
             ] == 0
 
         # Construct Z, Lagrange interpolation polynomial for Z_values
+        self.Z = Polynomial(Z_values, Basis.LAGRANGE)
         # Cpmpute z_1 commitment to Z polynomial
-        z_1 = setup.commit(Polynomial(Z_values, Basis.LAGRANGE))
+        z_1 = setup.commit(self.Z)
 
         # Return z_1
         return Message2(z_1)
@@ -188,23 +191,39 @@ class Prover:
 
         # List of roots of unity at 4x fineness, i.e. the powers of µ
         # where µ^(4n) = 1
+        roots4x = Scalar.roots_of_unity(group_order * 4)
 
         # Using self.fft_expand, move A, B, C into coset extended Lagrange basis
+        expanded_A = self.fft_expand(self.A)
+        expanded_B = self.fft_expand(self.B)
+        expanded_C = self.fft_expand(self.C)
 
         # Expand public inputs polynomial PI into coset extended Lagrange
+        expanded_PI = self.fft_expand(self.PI)
 
         # Expand selector polynomials pk.QL, pk.QR, pk.QM, pk.QO, pk.QC
         # into the coset extended Lagrange basis
+        expanded_QL = self.fft_expand(self.pk.QL)
+        expanded_QR = self.fft_expand(self.pk.QR)
+        expanded_QM = self.fft_expand(self.pk.QM)
+        expanded_QO = self.fft_expand(self.pk.QO)
+        expanded_QC = self.fft_expand(self.pk.QC)
 
         # Expand permutation grand product polynomial Z into coset extended
         # Lagrange basis
+        expanded_Z = self.fft_expand(self.Z)
 
         # Expand shifted Z(ω) into coset extended Lagrange basis
+        Z_shift = expanded_Z.shift(4)
 
         # Expand permutation polynomials pk.S1, pk.S2, pk.S3 into coset
         # extended Lagrange basis
+        expanded_S1 = self.fft_expand(self.pk.S1)
+        expanded_S2 = self.fft_expand(self.pk.S2)
+        expanded_S3 = self.fft_expand(self.pk.S3)
 
         # Compute Z_H = X^N - 1, also in evaluation form in the coset
+
 
         # Compute L0, the Lagrange basis polynomial that evaluates to 1 at x = 1 = ω^0
         # and 0 at other roots of unity
@@ -263,6 +282,12 @@ class Prover:
         # Compute s1_eval = pk.S1(zeta)
         # Compute s2_eval = pk.S2(zeta)
         # Compute z_shifted_eval = Z(zeta * ω)
+        a_eval = self.A.barycentric_eval(self.zeta)
+        b_eval = self.B.barycentric_eval(self.zeta)
+        c_eval = self.C.barycentric_eval(self.zeta)
+        s1_eval = self.pk.S1.barycentric_eval(self.zeta)
+        s2_eval = self.pk.S2.barycentric_eval(self.zeta)
+        z_shifted_eval = self.Z.barycentric_eval(self.zeta * Scalar.root_of_unity(self.group_order))
 
         # Return a_eval, b_eval, c_eval, s1_eval, s2_eval, z_shifted_eval
         return Message4(a_eval, b_eval, c_eval, s1_eval, s2_eval, z_shifted_eval)
